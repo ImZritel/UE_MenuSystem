@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Interfaces/OnlineSessionInterface.h"
 #include "Menu.generated.h"
 
 //
@@ -17,12 +18,28 @@ class MULTIPLAYERSESSIONS_API UMenu : public UUserWidget
 
 public:
 	UFUNCTION(BlueprintCallable)
-	void MenuSetup();
+	void MenuSetup(int32 NumberOfPublicConnections = 4, FString TypeOfMatch = FString(TEXT("FreeForAll")));
+
 protected:
 	virtual bool Initialize() override;
+	virtual void NativeDestruct() override; // function called when user travel to a new level and current level destroyed and removed
+
+	//
+	// Callbacks for the custom delegates on the MultiplayerSessionsSubsystem
+	//
+	UFUNCTION()
+	void OnCreateSession(bool bWasSuccessful);
+	void OnFindSessions(const TArray<FOnlineSessionSearchResult>& SessionResults, bool bWasSuccessful);
+	void OnJoinSession(EOnJoinSessionCompleteResult::Type Result);
+	UFUNCTION()
+	void OnDestroySession(bool bWasSuccessful);
+	UFUNCTION()
+	void OnStartSession(bool bWasSuccessful);
+
+
 private:
 	UPROPERTY(meta=(BindWidget))
-	class UButton* HostButton; // Name of button and a variable name in code should be strictly the same
+	class UButton* HostButton; // Name of button widgetBP and a variable name in the code here should be strictly the same
 	UPROPERTY(meta=(BindWidget))
 	class UButton* JoinButton;
 	// callbacks on button click:
@@ -30,6 +47,11 @@ private:
 	void HostButtonClicked();
 	UFUNCTION()
 	void JoinButtonClicked();
+
+	void MenuTearDown();
 	
 	class UMultiplayerSessionsSubsystem* MultiplayerSessionsSubsystem; // Subsystem designed to handle all online session functionality
+
+	int32 NumPublicConnections{4};
+	FString MatchType{TEXT("FreeForAll")};
 };
