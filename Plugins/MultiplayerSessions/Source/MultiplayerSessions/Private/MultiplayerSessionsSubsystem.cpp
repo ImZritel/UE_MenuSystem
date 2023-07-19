@@ -45,7 +45,14 @@ void UMultiplayerSessionsSubsystem::OnJoinSessionComplete(FName SessionName, EOn
     MultiplayerOnJoinSessionComplete.Broadcast(Result);
 }
 void UMultiplayerSessionsSubsystem::OnDestroySessionComplete(FName SessionName, bool bWasSuccessful) {
-
+    if(SessionInterface) {
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
+    }
+    if(bWasSuccessful && bCreateSessionOnDestroy) {
+        bCreateSessionOnDestroy = false;
+        CreateSession(LastNumPublicConnections, LastMatchType);
+    }
+    MultiplayerOnDestroySessionComplete.Broadcast(true);
 }
 void UMultiplayerSessionsSubsystem::OnStartSessionComplete(FName SessionName, bool bWasSuccessful) {
 
@@ -53,21 +60,17 @@ void UMultiplayerSessionsSubsystem::OnStartSessionComplete(FName SessionName, bo
 
 // Public functions:
 void UMultiplayerSessionsSubsystem::CreateSession(int32_t NumPublicConnections, FString MatchType) {
-    if(GEngine) {
-            GEngine->AddOnScreenDebugMessage(
-            -1,
-            15.f,
-            FColor::Green,
-            FString(TEXT("UMultiplayerSessionsSubsystem::CreateSession called."))
-            );
-        }
     if(!SessionInterface.IsValid()) {
         return; 
     }
 
     auto ExistingSession = SessionInterface->GetNamedSession(NAME_GameSession);
     if (ExistingSession) {
-        SessionInterface->DestroySession(NAME_GameSession);
+        bCreateSessionOnDestroy = true;
+        LastNumPublicConnections = NumPublicConnections;
+        LastMatchType = MatchType;
+
+        DestroySession(); // was: SessionInterface->DestroySession(NAME_GameSession); but may cause errors with hosting new session
     }
 
     //Store the delegate in a FDelegateHandle so we can later remove it from the delegate list
@@ -82,6 +85,7 @@ void UMultiplayerSessionsSubsystem::CreateSession(int32_t NumPublicConnections, 
     LastSessionSettings->bUsesPresence = true;
     LastSessionSettings->bUseLobbiesIfAvailable = true; //
     LastSessionSettings->Set(FName("MatchType"), MatchType, EOnlineDataAdvertisementType::ViaOnlineServiceAndPing);
+    LastSessionSettings->BuildUniqueId = 42;
 
     const ULocalPlayer* LocalPlayer = GetWorld()->GetFirstLocalPlayerFromController();
     if(!SessionInterface->CreateSession(*LocalPlayer->GetPreferredUniqueNetId(), NAME_GameSession, *LastSessionSettings)) {
@@ -124,7 +128,17 @@ void UMultiplayerSessionsSubsystem::JoinSession(const FOnlineSessionSearchResult
 
 }
 void UMultiplayerSessionsSubsystem::DestroySession() {
+    if(!SessionInterface.IsValid()) {
+        MultiplayerOnDestroySessionComplete.Broadcast(false);
+        return;
+    }
 
+    DestroySessionCompleteDelegateHandle = SessionInterface->AddOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegate);
+
+    if(!SessionInterface->DestroySession(NAME_GameSession)) {
+        SessionInterface->ClearOnDestroySessionCompleteDelegate_Handle(DestroySessionCompleteDelegateHandle);
+        MultiplayerOnDestroySessionComplete.Broadcast(false);
+    } // else call callback function OnDestroySessionComplete
 }
 void UMultiplayerSessionsSubsystem::StartSession() {
 
